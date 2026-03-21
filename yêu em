@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Heart Perfect</title>
+
+<style>
+body {
+    margin: 0;
+    background: black;
+    overflow: hidden;
+}
+canvas { display: block; }
+</style>
+</head>
+
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let particles = [];
+let stars = [];
+let time = 0;
+
+// ⭐ sao nền
+for (let i = 0; i < 200; i++) {
+    stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2,
+        alpha: Math.random()
+    });
+}
+
+// ❤️ công thức trái tim
+function heart(t) {
+    return {
+        x: 16 * Math.pow(Math.sin(t), 3),
+        y: -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t))
+    };
+}
+
+// 🔥 lớp BÊN TRONG (đều)
+for (let i = 0; i < 600; i++) {
+    let t = Math.random() * Math.PI * 2;
+    let r = Math.sqrt(Math.random());
+    particles.push({ t, r, border: false });
+}
+
+// 🔥 lớp VIỀN (r = 1)
+for (let i = 0; i < 300; i++) {
+    let t = Math.random() * Math.PI * 2;
+    particles.push({ t, r: 1, border: true });
+}
+
+function draw() {
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    time += 0.04;
+    let scale = 15 + Math.sin(time) * 2;
+
+    // ⭐ sao
+    stars.forEach(s => {
+        s.alpha += (Math.random() - 0.5) * 0.05;
+        s.alpha = Math.max(0.1, Math.min(1, s.alpha));
+        ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+    });
+
+    // ❤️ tính điểm
+    let points = particles.map(p => {
+        let pos = heart(p.t);
+        return {
+            x: canvas.width/2 + pos.x * scale * p.r,
+            y: canvas.height/2 + pos.y * scale * p.r,
+            border: p.border
+        };
+    });
+
+    // 💗 vẽ điểm (viền sáng hơn)
+    points.forEach(p => {
+        ctx.fillStyle = p.border ? "#ff99cc" : "#ff66b2";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.border ? 2 : 1.5, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    // 🧵 nối dây
+    for (let i = 0; i < points.length; i++) {
+        let connections = 0;
+
+        for (let j = i + 1; j < points.length; j++) {
+            let dx = points[i].x - points[j].x;
+            let dy = points[i].y - points[j].y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < 30 && connections < 3) {
+                ctx.strokeStyle = "rgba(255,102,178,0.25)";
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(points[i].x, points[i].y);
+                ctx.lineTo(points[j].x, points[j].y);
+                ctx.stroke();
+
+                connections++;
+            }
+        }
+    }
+
+    requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+
+</body>
+</html>
