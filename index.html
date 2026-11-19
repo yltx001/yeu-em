@@ -1,124 +1,860 @@
-<!DOCTYPE html>
-<html lang="vi">
+<<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>Heart Perfect</title>
-
-<style>
-body {
-    margin: 0;
-    background: black;
-    overflow: hidden;
-}
-canvas { display: block; }
-</style>
-</head>
-
-<body>
-<canvas id="canvas"></canvas>
-
-<script>
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
-let particles = [];
-let stars = [];
-let time = 0;
-
-// ⭐ sao nền
-for (let i = 0; i < 200; i++) {
-    stars.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        size: Math.random() * 2,
-        alpha: Math.random()
-    });
-}
-
-// ❤️ công thức trái tim
-function heart(t) {
-    return {
-        x: 16 * Math.pow(Math.sin(t), 3),
-        y: -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t))
-    };
-}
-
-// 🔥 lớp BÊN TRONG (đều)
-for (let i = 0; i < 600; i++) {
-    let t = Math.random() * Math.PI * 2;
-    let r = Math.sqrt(Math.random());
-    particles.push({ t, r, border: false });
-}
-
-// 🔥 lớp VIỀN (r = 1)
-for (let i = 0; i < 300; i++) {
-    let t = Math.random() * Math.PI * 2;
-    particles.push({ t, r: 1, border: true });
-}
-
-function draw() {
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    time += 0.04;
-    let scale = 15 + Math.sin(time) * 2;
-
-    // ⭐ sao
-    stars.forEach(s => {
-        s.alpha += (Math.random() - 0.5) * 0.05;
-        s.alpha = Math.max(0.1, Math.min(1, s.alpha));
-        ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
-        ctx.fillRect(s.x, s.y, s.size, s.size);
-    });
-
-    // ❤️ tính điểm
-    let points = particles.map(p => {
-        let pos = heart(p.t);
-        return {
-            x: canvas.width/2 + pos.x * scale * p.r,
-            y: canvas.height/2 + pos.y * scale * p.r,
-            border: p.border
-        };
-    });
-
-    // 💗 vẽ điểm (viền sáng hơn)
-    points.forEach(p => {
-        ctx.fillStyle = p.border ? "#ff99cc" : "#ff66b2";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.border ? 2 : 1.5, 0, Math.PI*2);
-        ctx.fill();
-    });
-
-    // 🧵 nối dây
-    for (let i = 0; i < points.length; i++) {
-        let connections = 0;
-
-        for (let j = i + 1; j < points.length; j++) {
-            let dx = points[i].x - points[j].x;
-            let dy = points[i].y - points[j].y;
-            let dist = Math.sqrt(dx*dx + dy*dy);
-
-            if (dist < 30 && connections < 3) {
-                ctx.strokeStyle = "rgba(255,102,178,0.25)";
-                ctx.lineWidth = 0.8;
-                ctx.beginPath();
-                ctx.moveTo(points[i].x, points[i].y);
-                ctx.lineTo(points[j].x, points[j].y);
-                ctx.stroke();
-
-                connections++;
-            }
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>廷kien</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
 
-    requestAnimationFrame(draw);
-}
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #060312;
+    }
 
-draw();
-</script>
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: grab;
+    }
 
+    canvas:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <script>
+    const canvas = document.getElementById('scene');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const TWO_PI = Math.PI * 2;
+    const DEG = Math.PI / 180;
+
+    // Thong so cay va thoi gian chuyen canh
+    const cfg = {
+      height: 436,
+      radius: 154,
+      persp: 610,
+      gatherTime: 6800,
+      holdTime: 2600,
+      colorShiftTime: 4800,
+      autoSpin: 0.000046,
+      dragSpeed: 0.0044,
+      friction: 0.942,
+      maxDpr: 1.75,
+      palette: {
+        white: '#f7f3ff',
+        pale: '#e5d4f7',
+        violet: '#c48df5',
+        red: '#d93458',
+        darkRed: '#8f2445',
+      },
+    };
+
+    const app = {
+      w: 0,
+      h: 0,
+      dpr: 1,
+      angleY: 0,
+      velY: 0,
+      isDragging: false,
+      lastX: 0,
+      lastMoveTime: 0,
+      t0: null,
+      prevFrame: 0,
+      hidden: false,
+      raf: null,
+    };
+
+    const data = {
+      tree: [],
+      spirals: [[], [], []],
+      ringParticles: [],
+      bgStars: [],
+      dust: [],
+      meteors: [],
+      nextMeteorTime: 3600,
+    };
+
+    function randomRange(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function clamp(val, min = 0, max = 1) {
+      return Math.max(min, Math.min(max, val));
+    }
+
+    function mix(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function mixRgb(c1, c2, t) {
+      const k = clamp(t);
+      return [
+        Math.round(mix(c1[0], c2[0], k)),
+        Math.round(mix(c1[1], c2[1], k)),
+        Math.round(mix(c1[2], c2[2], k)),
+      ];
+    }
+
+    function toCssRgb(rgb, a = 1) {
+      return a < 1 ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})` : `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+
+    function easeOut4(t) {
+      return 1 - Math.pow(1 - t, 4);
+    }
+
+    function easeSine(t) {
+      return -(Math.cos(Math.PI * t) - 1) / 2;
+    }
+
+    function easeQuad(t) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    function handleResize() {
+      app.w = window.innerWidth;
+      app.h = window.innerHeight;
+      app.dpr = Math.min(window.devicePixelRatio || 1, cfg.maxDpr);
+
+      canvas.width = Math.round(app.w * app.dpr);
+      canvas.height = Math.round(app.h * app.dpr);
+      ctx.setTransform(app.dpr, 0, 0, app.dpr, 0, 0);
+    }
+
+    function getStage(now) {
+      if (app.t0 === null) app.t0 = now;
+      const elapsed = Math.max(0, now - app.t0);
+      const startShift = cfg.gatherTime + cfg.holdTime;
+
+      if (elapsed < cfg.gatherTime) {
+        return {
+          stage: 1,
+          progress: elapsed / cfg.gatherTime,
+          bgT: 0,
+          colorT: 0,
+        };
+      }
+      if (elapsed < startShift) {
+        return {
+          stage: 1.5,
+          progress: 1,
+          bgT: 0,
+          colorT: 0,
+        };
+      }
+      if (elapsed < startShift + cfg.colorShiftTime) {
+        const raw = clamp((elapsed - startShift) / cfg.colorShiftTime);
+        const bgRaw = clamp(raw * 1.08);
+        const tintRaw = clamp((raw - 0.08) / 0.92);
+        return {
+          stage: 2,
+          progress: raw,
+          bgT: easeSine(easeQuad(bgRaw)),
+          colorT: easeSine(tintRaw),
+        };
+      }
+      return {
+        stage: 3,
+        progress: 1,
+        bgT: 1,
+        colorT: 1,
+      };
+    }
+
+    function restartScene(now = performance.now()) {
+      app.t0 = now;
+      app.prevFrame = now;
+      app.angleY = 0;
+      app.velY = 0;
+      data.meteors.length = 0;
+      data.nextMeteorTime = now + randomRange(3200, 5600);
+    }
+
+    function getRadiusAt(t, theta) {
+      const baseR = cfg.radius * Math.pow(Math.max(0.001, t), 0.79);
+      const wave = Math.sin(t * TWO_PI * 7.2 - 0.55);
+      const tier = Math.pow(Math.max(0, wave), 1.45) * 0.055;
+      const ripple =
+        0.013 * Math.sin(theta * 9 + t * 24) +
+        0.0085 * Math.cos(theta * 15 - t * 18) +
+        0.0065 * Math.sin(theta * 23 + t * 37);
+
+      return Math.max(1, baseR * (1 + tier + ripple));
+    }
+
+    function hasRedAccent(t, theta) {
+      const u = ((theta / TWO_PI) % 1 + 1) % 1;
+      const spots = [
+        [0.08, 0.17, 0.12, 0.06],
+        [0.48, 0.22, 0.15, 0.055],
+        [0.83, 0.29, 0.12, 0.065],
+        [0.25, 0.36, 0.13, 0.06],
+        [0.68, 0.43, 0.15, 0.06],
+        [0.1, 0.51, 0.13, 0.065],
+        [0.43, 0.59, 0.16, 0.07],
+        [0.84, 0.65, 0.13, 0.065],
+        [0.23, 0.74, 0.15, 0.065],
+        [0.61, 0.82, 0.16, 0.065],
+        [0.91, 0.91, 0.12, 0.055],
+        [0.39, 0.94, 0.15, 0.055],
+      ];
+
+      for (const [su, st, ru, rt] of spots) {
+        let du = Math.abs(u - su);
+        du = Math.min(du, 1 - du);
+        const distSq = (du / ru) ** 2 + ((t - st) / rt) ** 2;
+        if (distSq < 1 && Math.random() > 0.18) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function chooseColor(isRed, darkCut) {
+      const { white, pale, violet, red, darkRed } = cfg.palette;
+      if (isRed) {
+        const p = Math.random();
+        if (p < darkCut) return darkRed;
+        if (p < darkCut + 0.14) return violet;
+        return red;
+      }
+      const p = Math.random();
+      if (p > 0.88) return pale;
+      if (p > 0.78) return violet;
+      return white;
+    }
+
+    function pushTreePoint(x, y, z, color, size, spreadR, spreadA, spreadY) {
+      data.tree.push({
+        x,
+        y,
+        z,
+        color,
+        size,
+        spreadR,
+        spreadA,
+        spreadY,
+        delay: Math.random() * 0.55,
+        phase: Math.random() * TWO_PI,
+        blinkSpeed: randomRange(0.00075, 0.00155),
+      });
+    }
+
+    function initParticles() {
+      data.tree.length = 0;
+      data.spirals = [[], [], []];
+      data.ringParticles.length = 0;
+      data.bgStars.length = 0;
+      data.dust.length = 0;
+      data.meteors.length = 0;
+
+      // Lop vo ngoai
+      for (let i = 0; i < 6300; i++) {
+        const t = randomRange(0.015, 0.995);
+        const a = Math.random() * TWO_PI;
+        const r = getRadiusAt(t, a) + randomRange(-2.5, 2.5);
+        const col = chooseColor(hasRedAccent(t, a), 0.3);
+
+        pushTreePoint(
+          Math.cos(a) * r,
+          t * cfg.height,
+          Math.sin(a) * r,
+          col,
+          randomRange(0.52, 1.12),
+          randomRange(0.16, 0.42),
+          randomRange(-0.22, 0.22),
+          randomRange(-9, 9)
+        );
+      }
+
+      // Lop ben trong
+      for (let i = 0; i < 2150; i++) {
+        const t = randomRange(0.05, 0.98);
+        const a = Math.random() * TWO_PI;
+        const r = getRadiusAt(t, a) * Math.sqrt(Math.random()) * 0.92;
+        const col = Math.random() > 0.92 ? cfg.palette.red : cfg.palette.white;
+
+        pushTreePoint(
+          Math.cos(a) * r,
+          t * cfg.height,
+          Math.sin(a) * r,
+          col,
+          randomRange(0.45, 0.95),
+          randomRange(0.16, 0.42),
+          randomRange(-0.22, 0.22),
+          randomRange(-9, 9)
+        );
+      }
+
+      // Cac tang la vien ngoai
+      for (let layer = 1; layer <= 9; layer++) {
+        const baseT = layer / 10;
+        const total = 265;
+        for (let i = 0; i < total; i++) {
+          const a = (i / total) * TWO_PI + layer * 0.19;
+          const t = Math.max(0.025, Math.min(0.98, baseT + randomRange(-0.0175, 0.0175)));
+          const r = getRadiusAt(t, a) * randomRange(1.012, 1.038);
+          const col = chooseColor(hasRedAccent(t, a), 0.28);
+
+          pushTreePoint(
+            Math.cos(a) * r,
+            t * cfg.height + randomRange(-4, 4),
+            Math.sin(a) * r,
+            col,
+            randomRange(0.4, 1.05),
+            randomRange(0.08, 0.26),
+            randomRange(-0.12, 0.12),
+            randomRange(-5, 5)
+          );
+        }
+      }
+
+      // 3 day xoan
+      for (let s = 0; s < 3; s++) {
+        const pts = 600;
+        for (let i = 0; i < pts; i++) {
+          const t = i / pts;
+          const a = t * TWO_PI * 4.5 + (s * TWO_PI) / 3;
+          const r = getRadiusAt(t, a) * 0.98;
+          data.spirals[s].push({
+            x: Math.cos(a) * r,
+            y: t * cfg.height,
+            z: Math.sin(a) * r,
+          });
+        }
+      }
+
+      // Vong ngan ha duoi chan
+      const ringDefs = [
+        [155, 640],
+        [205, 740],
+        [258, 840],
+        [315, 920],
+        [375, 940],
+        [435, 840],
+        [490, 680],
+      ];
+
+      ringDefs.forEach(([rad, cnt], idx) => {
+        for (let i = 0; i < cnt; i++) {
+          const a = Math.random() * TWO_PI;
+          const r = rad + randomRange(-9.5, 9.5);
+          data.ringParticles.push({
+            x: Math.cos(a) * r,
+            y: randomRange(-6, 6),
+            z: Math.sin(a) * r,
+            tilt: 0.2 + idx * 0.06,
+            size: randomRange(0.35, 1.08),
+            alpha: randomRange(0.2, 0.56),
+            red: Math.random() > 0.93,
+          });
+        }
+      });
+
+      // Dai song ngan ha
+      for (let b = 0; b < 5; b++) {
+        const cnt = 370;
+        for (let i = 0; i < cnt; i++) {
+          const u = i / (cnt - 1);
+          const a = u * TWO_PI * 1.65 + b * 0.72;
+          const r = 190 + u * 265 + Math.sin(u * TWO_PI * 2.1 + b) * 19;
+          const wy = Math.sin(u * TWO_PI * 2.1 + b * 0.8) * 17 + Math.cos(u * TWO_PI * 3.2 - b) * 5;
+
+          data.ringParticles.push({
+            x: Math.cos(a) * r,
+            y: wy + randomRange(-4, 4),
+            z: Math.sin(a) * r,
+            tilt: 0.16 + b * 0.035,
+            size: randomRange(0.4, 1.32),
+            alpha: randomRange(0.24, 0.56),
+            red: Math.random() > 0.88,
+          });
+        }
+      }
+
+      // Sao nen
+      for (let i = 0; i < 210; i++) {
+        const roll = Math.random();
+        let tint = '#ffffff';
+        if (roll > 0.78) tint = '#e7c6ff';
+        else if (roll > 0.62) tint = '#ffd6e6';
+
+        data.bgStars.push({
+          x: Math.random(),
+          y: Math.random(),
+          r: randomRange(0.35, 1.35),
+          speed: randomRange(0.035, 0.16),
+          phase: Math.random() * TWO_PI,
+          tint,
+        });
+      }
+
+      // Bui sao bay nhe
+      for (let i = 0; i < 180; i++) {
+        data.dust.push({
+          x: Math.random(),
+          y: Math.random(),
+          r: randomRange(0.32, 1.2),
+          vx: randomRange(-0.000005, 0.000005),
+          vy: randomRange(0.000005, 0.00002),
+          alpha: randomRange(0.06, 0.24),
+          red: Math.random() > 0.74,
+          violet: Math.random() > 0.55,
+        });
+      }
+    }
+
+    function project(x, y, z, cx, topY, scale, cosY, sinY, depthFactor = 0.48) {
+      const rx = x * cosY - z * sinY;
+      const rz = x * sinY + z * cosY;
+      const k = cfg.persp / (cfg.persp + rz * depthFactor);
+
+      return {
+        x: cx + rx * k * scale,
+        y: topY + y * k * scale,
+      };
+    }
+
+    function createMeteor() {
+      const angle = randomRange(24, 42) * DEG;
+      const speed = randomRange(0.42, 0.72);
+      data.meteors.push({
+        x: randomRange(app.w * 0.12, app.w * 0.88),
+        y: randomRange(app.h * 0.04, app.h * 0.34),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        len: randomRange(75, 145),
+        age: 0,
+        life: randomRange(740, 1200),
+      });
+    }
+
+    function renderMeteors(now, dt, colorT) {
+      if (colorT > 0.35 && now >= data.nextMeteorTime) {
+        createMeteor();
+        data.nextMeteorTime = now + randomRange(3600, 7200);
+      }
+      if (!data.meteors.length) return;
+
+      const strength = clamp((colorT - 0.35) / 0.65);
+      if (strength <= 0) return;
+
+      ctx.save();
+      ctx.lineCap = 'round';
+
+      for (let i = data.meteors.length - 1; i >= 0; i--) {
+        const m = data.meteors[i];
+        m.age += dt;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+
+        if (m.age >= m.life) {
+          data.meteors.splice(i, 1);
+          continue;
+        }
+
+        const p = m.age / m.life;
+        const fade = p < 0.2 ? p / 0.2 : 1 - (p - 0.2) / 0.8;
+        const vLen = Math.hypot(m.vx, m.vy) || 1;
+        const tx = m.x - (m.vx / vLen) * m.len;
+        const ty = m.y - (m.vy / vLen) * m.len;
+
+        const grad = ctx.createLinearGradient(m.x, m.y, tx, ty);
+        grad.addColorStop(0, `rgba(255, 245, 255, ${0.85 * fade * strength})`);
+        grad.addColorStop(0.35, `rgba(218, 148, 255, ${0.42 * fade * strength})`);
+        grad.addColorStop(1, 'rgba(130, 45, 210, 0)');
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function renderSky(now, dt, bgT, colorT) {
+      const { w, h } = app;
+      const cInner = mixRgb([7, 7, 15], [35, 14, 61], bgT);
+      const cMid = mixRgb([4, 4, 10], [18, 7, 36], bgT);
+      const cOuter = mixRgb([2, 2, 6], [5, 2, 13], bgT);
+
+      const skyGrad = ctx.createRadialGradient(w * 0.5, h * 0.46, 10, w * 0.5, h * 0.48, h * 0.96);
+      skyGrad.addColorStop(0, toCssRgb(cInner));
+      skyGrad.addColorStop(0.45, toCssRgb(cMid));
+      skyGrad.addColorStop(1, toCssRgb(cOuter));
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      if (bgT > 0.005) {
+        ctx.save();
+        ctx.translate(w * 0.5, h * 0.54);
+        ctx.rotate(-0.24);
+        const bandR = Math.max(w, h) * 0.65;
+        const bandGrad = ctx.createRadialGradient(0, 0, 12, 0, 0, bandR);
+        bandGrad.addColorStop(
+          0,
+          `rgba(${Math.round(88 + 52 * bgT)}, 28, ${Math.round(115 + 75 * bgT)}, ${0.24 * bgT})`
+        );
+        bandGrad.addColorStop(0.5, `rgba(56, 16, 98, ${0.15 * bgT})`);
+        bandGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = bandGrad;
+        ctx.scale(1.35, 0.42);
+        ctx.beginPath();
+        ctx.arc(0, 0, bandR, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      for (const s of data.bgStars) {
+        s.y += s.speed * dt * 0.000025;
+        if (s.y > 1) {
+          s.y = 0;
+          s.x = Math.random();
+        }
+        ctx.fillStyle = bgT > 0.25 ? s.tint : '#ffffff';
+        ctx.globalAlpha = 0.84 + 0.16 * Math.sin(now * 0.00085 + s.phase);
+        ctx.beginPath();
+        ctx.arc(s.x * w, s.y * h, s.r, 0, TWO_PI);
+        ctx.fill();
+      }
+
+      if (bgT > 0.005) {
+        const leftGlow = ctx.createRadialGradient(w * 0.18, h * 0.58, 2, w * 0.18, h * 0.58, w * 0.48);
+        leftGlow.addColorStop(
+          0,
+          `rgba(${Math.round(128 + 38 * bgT)}, ${Math.round(32 + 12 * bgT)}, ${Math.round(96 + 52 * bgT)}, ${0.2 * bgT})`
+        );
+        leftGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = leftGlow;
+        ctx.fillRect(0, 0, w, h);
+
+        const rightGlow = ctx.createRadialGradient(w * 0.82, h * 0.34, 2, w * 0.82, h * 0.34, w * 0.42);
+        rightGlow.addColorStop(
+          0,
+          `rgba(${Math.round(92 + 44 * bgT)}, 34, ${Math.round(138 + 68 * bgT)}, ${0.19 * bgT})`
+        );
+        rightGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = rightGlow;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      for (const d of data.dust) {
+        d.x = (((d.x + d.vx * dt + 0.02) % 1.04) + 1.04) % 1.04 - 0.02;
+        d.y += d.vy * dt;
+        if (d.y > 1.02) {
+          d.y = -0.02;
+          d.x = Math.random();
+        }
+        ctx.globalAlpha = d.alpha;
+        if (colorT <= 0.01) ctx.fillStyle = '#ece6f5';
+        else if (d.red) ctx.fillStyle = '#e05d82';
+        else if (d.violet) ctx.fillStyle = '#c996ff';
+        else ctx.fillStyle = '#f3ebff';
+
+        ctx.beginPath();
+        ctx.arc(d.x * w, d.y * h, d.r, 0, TWO_PI);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      renderMeteors(now, dt, colorT);
+    }
+
+    function renderBaseGalaxy(cx, topY, scale, stageInfo) {
+      const cy = topY + cfg.height * scale + 5 * scale;
+      const cosG = Math.cos(app.angleY * 0.24);
+      const sinG = Math.sin(app.angleY * 0.24);
+      const { colorT, bgT, stage, progress } = stageInfo;
+
+      for (const isRed of [false, true]) {
+        ctx.beginPath();
+        let count = 0;
+
+        for (const p of data.ringParticles) {
+          if (p.red !== isRed) continue;
+          const tx = p.x * cosG - p.z * sinG;
+          const tz = p.x * sinG + p.z * cosG;
+          const ty = p.y + (tx + tz) * p.tilt;
+          const k = cfg.persp / (cfg.persp + tz * 0.3);
+
+          const px = cx + tx * scale * k;
+          const py = cy + ty * scale * k;
+          const r = Math.max(0.25, p.size * scale);
+
+          ctx.moveTo(px + r, py);
+          ctx.arc(px, py, r, 0, TWO_PI);
+          count++;
+        }
+
+        if (count > 0) {
+          let alpha = isRed ? 0.46 : 0.48;
+          if (stage === 1) {
+            alpha = easeOut4(clamp((progress - 0.35) / 0.65)) * 0.48;
+          } else if (stage === 1.5) {
+            alpha = 0.48;
+          } else if (stage === 2) {
+            alpha = 0.45;
+          }
+
+          ctx.fillStyle = !isRed || colorT <= 0.01 ? '#ede6f7' : cfg.palette.red;
+          ctx.globalAlpha = alpha;
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.12);
+
+      for (let i = 0; i < 7; i++) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, (165 + i * 54) * scale, (32 + i * 14) * scale, 0, 0, TWO_PI);
+        ctx.strokeStyle =
+          i === 2 && bgT > 0.02
+            ? `rgba(225, 145, 255, ${0.24 * bgT})`
+            : 'rgba(232, 214, 242, 0.16)';
+        ctx.lineWidth = (i === 2 ? 1.55 : 1.1) * scale;
+        ctx.stroke();
+      }
+
+      for (let b = 0; b < 4; b++) {
+        ctx.beginPath();
+        for (let i = 0; i <= 300; i++) {
+          const u = i / 300;
+          const a = u * TWO_PI * 1.55 + b * 0.8 + app.angleY * 0.12;
+          const r = (185 + u * 270 + Math.sin(u * TWO_PI * 2 + b) * 16) * scale;
+          const bx = Math.cos(a) * r;
+          const by = Math.sin(a) * r * 0.235 + Math.sin(u * TWO_PI * 2.2 + b) * 7 * scale;
+          if (i === 0) ctx.moveTo(bx, by);
+          else ctx.lineTo(bx, by);
+        }
+
+        const isPink = b === 1 && colorT > 0.01;
+        ctx.strokeStyle = isPink ? `rgba(222, 84, 124, ${0.34 * colorT})` : 'rgba(246, 236, 252, 0.28)';
+        ctx.lineWidth = (isPink ? 1.45 : 1.0) * scale;
+        ctx.shadowBlur = (isPink ? 13 : 8) * scale;
+        ctx.shadowColor = isPink ? 'rgba(212, 58, 108, 0.48)' : 'rgba(226, 198, 255, 0.34)';
+        ctx.stroke();
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    function renderTree(now, cx, topY, scale, stageInfo) {
+      const cosY = Math.cos(app.angleY);
+      const sinY = Math.sin(app.angleY);
+      const { white, pale, violet, red, darkRed } = cfg.palette;
+      const { colorT, bgT, stage, progress } = stageInfo;
+
+      const fogY = topY + cfg.height * scale * 0.55;
+      const fog = ctx.createRadialGradient(cx, fogY, 0, cx, fogY, cfg.radius * scale * 2.25);
+      fog.addColorStop(0, `rgba(236, 218, 255, ${0.09 + 0.04 * bgT})`);
+      fog.addColorStop(0.45, `rgba(176, 48, 112, ${0.06 * colorT})`);
+      fog.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = fog;
+      ctx.fillRect(
+        cx - cfg.radius * scale * 2.5,
+        topY - 20 * scale,
+        cfg.radius * scale * 5,
+        cfg.height * scale + 100 * scale
+      );
+
+      const groups = {
+        [white]: [],
+        [pale]: [],
+        [violet]: [],
+        [red]: [],
+        [darkRed]: [],
+      };
+
+      for (const p of data.tree) {
+        let f = 1;
+        if (stage === 1) {
+          const local = clamp((progress - p.delay) / (1 - p.delay * 0.6));
+          f = easeOut4(local);
+        }
+
+        const r0 = Math.hypot(p.x, p.z);
+        const a0 = Math.atan2(p.z, p.x);
+        const rCur = r0 * (1 + p.spreadR * (1 - f));
+        const aCur = a0 + p.spreadA * (1 - f);
+        const yCur = p.y + p.spreadY * (1 - f);
+
+        const pt = project(Math.cos(aCur) * rCur, yCur, Math.sin(aCur) * rCur, cx, topY, scale, cosY, sinY);
+        const pulse = 0.9 + 0.1 * Math.sin(now * p.blinkSpeed + p.phase);
+        const alpha = (stage === 1 ? f * 0.95 : 1) * pulse;
+        const size = Math.max(0.38, p.size * scale);
+
+        groups[white].push({ x: pt.x, y: pt.y, size, alpha });
+        if (colorT > 0 && p.color !== white) {
+          groups[p.color].push({ x: pt.x, y: pt.y, size, alpha });
+        }
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+
+      const drawGroup = (list, style, mul) => {
+        if (!list.length || mul <= 0.005) return;
+        ctx.beginPath();
+        for (const item of list) {
+          ctx.globalAlpha = item.alpha * mul;
+          ctx.moveTo(item.x + item.size, item.y);
+          ctx.arc(item.x, item.y, item.size, 0, TWO_PI);
+        }
+        ctx.fillStyle = style;
+        ctx.fill();
+      };
+
+      const whiteMul = stage === 1 ? 0.92 : 0.92 - 0.24 * colorT;
+      drawGroup(groups[white], '#fcf9ff', whiteMul);
+
+      if (colorT > 0) {
+        drawGroup(groups[pale], pale, 0.62 * colorT);
+        drawGroup(groups[violet], violet, 0.56 * colorT);
+        drawGroup(groups[red], red, 0.92 * colorT);
+        drawGroup(groups[darkRed], darkRed, 0.82 * colorT);
+      }
+
+      ctx.lineCap = 'round';
+      const lineAlpha = stage === 1 ? easeOut4(progress) : 1;
+
+      data.spirals.forEach((strand, idx) => {
+        ctx.beginPath();
+        strand.forEach((pt, i) => {
+          const p2 = project(pt.x, pt.y, pt.z, cx, topY, scale, cosY, sinY);
+          if (i === 0) ctx.moveTo(p2.x, p2.y);
+          else ctx.lineTo(p2.x, p2.y);
+        });
+
+        const coloredStrand = idx === 1 && colorT > 0.01;
+        ctx.strokeStyle = coloredStrand ? red : white;
+        ctx.globalAlpha = lineAlpha * (coloredStrand ? 0.3 * colorT : 0.38);
+        ctx.lineWidth = Math.max(0.68, 0.98 * scale);
+        ctx.stroke();
+      });
+
+      ctx.restore();
+      ctx.globalAlpha = 1;
+
+      // Dinh cay
+      const topPulse = 0.9 + 0.1 * Math.sin(now * 0.0024);
+      const topStarY = topY - 7 * scale;
+      const glowR = 29 * scale * topPulse;
+
+      const topGlow = ctx.createRadialGradient(cx, topStarY, 0, cx, topStarY, glowR);
+      topGlow.addColorStop(0, 'rgba(255, 250, 255, 0.72)');
+      topGlow.addColorStop(0.34, `rgba(235, 198, 255, ${0.18 + 0.12 * bgT})`);
+      topGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = topGlow;
+      ctx.beginPath();
+      ctx.arc(cx, topStarY, glowR, 0, TWO_PI);
+      ctx.fill();
+
+      ctx.fillStyle = '#fffaff';
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.arc(cx, topStarY, 2.2 * scale, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    function loop(now) {
+      if (app.hidden) return;
+      if (!app.prevFrame) app.prevFrame = now;
+
+      const dt = Math.min(now - app.prevFrame, 32);
+      app.prevFrame = now;
+
+      if (!app.isDragging) {
+        app.angleY += dt * cfg.autoSpin + app.velY * (dt / 16);
+        app.velY *= Math.pow(cfg.friction, dt / 16);
+        if (Math.abs(app.velY) < 1e-6) app.velY = 0;
+      }
+
+      const stageInfo = getStage(now);
+      const scale = Math.min(app.w / 430, app.h / 700) * 0.96;
+      const cx = app.w * 0.5;
+      const topY = app.h * 0.155;
+
+      renderSky(now, dt, stageInfo.bgT, stageInfo.colorT);
+      renderBaseGalaxy(cx, topY, scale, stageInfo);
+      renderTree(now, cx, topY, scale, stageInfo);
+
+      app.raf = requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('resize', handleResize);
+
+    canvas.addEventListener('pointerdown', (e) => {
+      app.isDragging = true;
+      app.velY = 0;
+      app.lastX = e.clientX;
+      app.lastMoveTime = performance.now();
+      canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!app.isDragging) return;
+      const now = performance.now();
+      const dt = Math.max(8, now - app.lastMoveTime);
+      const dx = e.clientX - app.lastX;
+      const dAngle = dx * cfg.dragSpeed;
+
+      app.angleY += dAngle;
+      app.velY = dAngle * Math.min(1.2, 16 / dt) * 0.65;
+      app.lastX = e.clientX;
+      app.lastMoveTime = now;
+    });
+
+    const endDrag = () => {
+      app.isDragging = false;
+    };
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointercancel', endDrag);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'r' || e.key === 'R') {
+        restartScene(performance.now());
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        app.hidden = true;
+        if (app.raf !== null) {
+          cancelAnimationFrame(app.raf);
+          app.raf = null;
+        }
+      } else {
+        app.hidden = false;
+        app.prevFrame = performance.now();
+        app.lastMoveTime = app.prevFrame;
+        app.raf = requestAnimationFrame(loop);
+      }
+    });
+
+    handleResize();
+    initParticles();
+    app.raf = requestAnimationFrame(loop);
+  </script>
 </body>
 </html>
